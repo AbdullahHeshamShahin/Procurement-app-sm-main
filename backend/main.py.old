@@ -1,0 +1,765 @@
+import os
+import json
+from typing import List, Dict, Optional
+from datetime import datetime
+from enum import Enum
+
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from bson import ObjectId
+
+# Load environment variables from .env file
+load_dotenv()
+
+app = FastAPI(title="Procurement Request Management API")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# MongoDB configuration
+MONGODB_URI = os.getenv(
+    "MONGODB_URI",
+    "mongodb+srv://abdullahesham123_db_user:Balabizo1@cluster0.8e9lafh.mongodb.net/?appName=Cluster0",
+)
+MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "procurement_db")
+
+# OpenAI configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+mongo_client: Optional[AsyncIOMotorClient] = None
+db = None
+openai_client: Optional[AsyncOpenAI] = None
+
+
+# Commodity Groups Data
+COMMODITY_GROUPS = [
+    {"id": "001", "category": "General Services", "name": "Accommodation Rentals"},
+    {"id": "002", "category": "General Services", "name": "Membership Fees"},
+    {"id": "003", "category": "General Services", "name": "Workplace Safety"},
+    {"id": "004", "category": "General Services", "name": "Consulting"},
+    {"id": "005", "category": "General Services", "name": "Financial Services"},
+    {"id": "006", "category": "General Services", "name": "Fleet Management"},
+    {"id": "007", "category": "General Services", "name": "Recruitment Services"},
+    {"id": "008", "category": "General Services", "name": "Professional Development"},
+    {"id": "009", "category": "General Services", "name": "Miscellaneous Services"},
+    {"id": "010", "category": "General Services", "name": "Insurance"},
+    {"id": "011", "category": "Facility Management", "name": "Electrical Engineering"},
+    {
+        "id": "012",
+        "category": "Facility Management",
+        "name": "Facility Management Services",
+    },
+    {"id": "013", "category": "Facility Management", "name": "Security"},
+    {"id": "014", "category": "Facility Management", "name": "Renovations"},
+    {"id": "015", "category": "Facility Management", "name": "Office Equipment"},
+    {"id": "016", "category": "Facility Management", "name": "Energy Management"},
+    {"id": "017", "category": "Facility Management", "name": "Maintenance"},
+    {
+        "id": "018",
+        "category": "Facility Management",
+        "name": "Cafeteria and Kitchenettes",
+    },
+    {"id": "019", "category": "Facility Management", "name": "Cleaning"},
+    {
+        "id": "020",
+        "category": "Publishing Production",
+        "name": "Audio and Visual Production",
+    },
+    {"id": "021", "category": "Publishing Production", "name": "Books/Videos/CDs"},
+    {"id": "022", "category": "Publishing Production", "name": "Printing Costs"},
+    {
+        "id": "023",
+        "category": "Publishing Production",
+        "name": "Software Development for Publishing",
+    },
+    {"id": "024", "category": "Publishing Production", "name": "Material Costs"},
+    {
+        "id": "025",
+        "category": "Publishing Production",
+        "name": "Shipping for Production",
+    },
+    {
+        "id": "026",
+        "category": "Publishing Production",
+        "name": "Digital Product Development",
+    },
+    {"id": "027", "category": "Publishing Production", "name": "Pre-production"},
+    {"id": "028", "category": "Publishing Production", "name": "Post-production Costs"},
+    {"id": "029", "category": "Information Technology", "name": "Hardware"},
+    {"id": "030", "category": "Information Technology", "name": "IT Services"},
+    {"id": "031", "category": "Information Technology", "name": "Software"},
+    {
+        "id": "032",
+        "category": "Logistics",
+        "name": "Courier, Express, and Postal Services",
+    },
+    {"id": "033", "category": "Logistics", "name": "Warehousing and Material Handling"},
+    {"id": "034", "category": "Logistics", "name": "Transportation Logistics"},
+    {"id": "035", "category": "Logistics", "name": "Delivery Services"},
+    {"id": "036", "category": "Marketing & Advertising", "name": "Advertising"},
+    {"id": "037", "category": "Marketing & Advertising", "name": "Outdoor Advertising"},
+    {"id": "038", "category": "Marketing & Advertising", "name": "Marketing Agencies"},
+    {"id": "039", "category": "Marketing & Advertising", "name": "Direct Mail"},
+    {
+        "id": "040",
+        "category": "Marketing & Advertising",
+        "name": "Customer Communication",
+    },
+    {"id": "041", "category": "Marketing & Advertising", "name": "Online Marketing"},
+    {"id": "042", "category": "Marketing & Advertising", "name": "Events"},
+    {
+        "id": "043",
+        "category": "Marketing & Advertising",
+        "name": "Promotional Materials",
+    },
+    {
+        "id": "044",
+        "category": "Production",
+        "name": "Warehouse and Operational Equipment",
+    },
+    {"id": "045", "category": "Production", "name": "Production Machinery"},
+    {"id": "046", "category": "Production", "name": "Spare Parts"},
+    {"id": "047", "category": "Production", "name": "Internal Transportation"},
+    {"id": "048", "category": "Production", "name": "Production Materials"},
+    {"id": "049", "category": "Production", "name": "Consumables"},
+    {"id": "050", "category": "Production", "name": "Maintenance and Repairs"},
+]
+
+DEPARTMENTS = [
+    "HR",
+    "Finance",
+    "Engineering",
+    "Marketing",
+    "Sales",
+    "Operations",
+    "Legal",
+    "IT",
+    "Procurement",
+    "R&D",
+    "Customer Support",
+    "Administration",
+    "Creative Marketing Department",
+]
+
+
+# Enums
+class RequestStatus(str, Enum):
+    OPEN = "Open"
+    IN_PROGRESS = "In Progress"
+    CLOSED = "Closed"
+
+
+# Pydantic Models
+class OrderLine(BaseModel):
+    description: str
+    unit_price: float
+    amount: int
+    unit: str
+    total_price: float
+
+
+class StatusHistoryEntry(BaseModel):
+    status: RequestStatus
+    changed_at: datetime
+    changed_by: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ProcurementRequest(BaseModel):
+    requestor_name: str
+    title: str
+    vendor_name: str
+    vat_id: str
+    commodity_group_id: str
+    commodity_group_name: Optional[str] = None
+    order_lines: List[OrderLine]
+    total_cost: float
+    department: str
+    status: RequestStatus = RequestStatus.OPEN
+    status_history: List[StatusHistoryEntry] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProcurementRequestCreate(BaseModel):
+    requestor_name: str
+    title: str
+    vendor_name: str
+    vat_id: str
+    commodity_group_id: str
+    order_lines: List[OrderLine]
+    total_cost: float
+    department: str
+
+
+class ProcurementRequestUpdate(BaseModel):
+    requestor_name: Optional[str] = None
+    title: Optional[str] = None
+    vendor_name: Optional[str] = None
+    vat_id: Optional[str] = None
+    commodity_group_id: Optional[str] = None
+    order_lines: Optional[List[OrderLine]] = None
+    total_cost: Optional[float] = None
+    department: Optional[str] = None
+
+
+class StatusUpdate(BaseModel):
+    status: RequestStatus
+    changed_by: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CommodityGroup(BaseModel):
+    id: str
+    category: str
+    name: str
+
+
+class DocumentExtractionResponse(BaseModel):
+    vendor_name: Optional[str] = None
+    vat_id: Optional[str] = None
+    department: Optional[str] = None
+    order_lines: List[OrderLine] = []
+    total_cost: Optional[float] = None
+    suggested_commodity_group_id: Optional[str] = None
+    suggested_commodity_group_name: Optional[str] = None
+    extraction_confidence: float = 0.0
+
+
+class CommodityGroupSuggestion(BaseModel):
+    commodity_group_id: str
+    commodity_group_name: str
+    category: str
+    confidence: float
+    reasoning: str
+
+
+class ProcurementRequestResponse(BaseModel):
+    id: str
+    requestor_name: str
+    title: str
+    vendor_name: str
+    vat_id: str
+    commodity_group_id: str
+    commodity_group_name: str
+    order_lines: List[OrderLine]
+    total_cost: float
+    department: str
+    status: RequestStatus
+    status_history: List[StatusHistoryEntry]
+    created_at: datetime
+    updated_at: datetime
+
+
+@app.on_event("startup")
+async def startup_db_client():
+    """Create MongoDB client and OpenAI client on startup."""
+    global mongo_client, db, openai_client
+    mongo_client = AsyncIOMotorClient(MONGODB_URI)
+    db = mongo_client[MONGODB_DB_NAME]
+
+    # Seed commodity groups
+    await seed_database()
+
+    # Initialize OpenAI client
+    if OPENAI_API_KEY:
+        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    """Close MongoDB client on shutdown."""
+    if mongo_client is not None:
+        mongo_client.close()
+
+
+async def seed_database() -> None:
+    """Seed MongoDB with commodity groups if not present."""
+    if db is None:
+        return
+
+    commodity_groups_collection = db["commodity_groups"]
+
+    if await commodity_groups_collection.count_documents({}) == 0:
+        await commodity_groups_collection.insert_many(COMMODITY_GROUPS)
+
+
+def serialize_request(request: dict) -> dict:
+    """Convert MongoDB document to response format."""
+    request["id"] = str(request.pop("_id"))
+
+    # Find commodity group name
+    cg = next(
+        (g for g in COMMODITY_GROUPS if g["id"] == request.get("commodity_group_id")),
+        None,
+    )
+    request["commodity_group_name"] = cg["name"] if cg else "Unknown"
+
+    return request
+
+
+# API Endpoints
+@app.get("/")
+async def read_root():
+    return {"message": "Procurement Request Management API"}
+
+
+@app.get("/api/commodity-groups", response_model=List[CommodityGroup])
+async def get_commodity_groups():
+    """Get all commodity groups."""
+    return [CommodityGroup(**cg) for cg in COMMODITY_GROUPS]
+
+
+@app.get("/api/departments", response_model=List[str])
+async def get_departments():
+    """Get all departments."""
+    return DEPARTMENTS
+
+
+@app.post("/api/requests", response_model=ProcurementRequestResponse)
+async def create_request(request: ProcurementRequestCreate):
+    """Create a new procurement request."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    # Validate commodity group
+    cg = next(
+        (g for g in COMMODITY_GROUPS if g["id"] == request.commodity_group_id), None
+    )
+    if not cg:
+        raise HTTPException(status_code=400, detail="Invalid commodity group ID")
+
+    # Validate order lines total matches total_cost
+    calculated_total = sum(line.total_price for line in request.order_lines)
+    if abs(calculated_total - request.total_cost) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total cost ({request.total_cost}) doesn't match sum of order lines ({calculated_total})",
+        )
+
+    # Create the request document
+    now = datetime.utcnow()
+    request_doc = {
+        **request.model_dump(),
+        "order_lines": [line.model_dump() for line in request.order_lines],
+        "status": RequestStatus.OPEN.value,
+        "status_history": [
+            {
+                "status": RequestStatus.OPEN.value,
+                "changed_at": now,
+                "changed_by": request.requestor_name,
+                "notes": "Request created",
+            }
+        ],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = await db["procurement_requests"].insert_one(request_doc)
+    request_doc["_id"] = result.inserted_id
+
+    return ProcurementRequestResponse(**serialize_request(request_doc))
+
+
+@app.get("/api/requests", response_model=List[ProcurementRequestResponse])
+async def get_requests(
+    status: Optional[RequestStatus] = None, department: Optional[str] = None
+):
+    """Get all procurement requests with optional filtering."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    query = {}
+    if status:
+        query["status"] = status.value
+    if department:
+        query["department"] = department
+
+    cursor = db["procurement_requests"].find(query).sort("created_at", -1)
+    requests = await cursor.to_list(length=None)
+
+    return [ProcurementRequestResponse(**serialize_request(r)) for r in requests]
+
+
+@app.get("/api/requests/{request_id}", response_model=ProcurementRequestResponse)
+async def get_request(request_id: str):
+    """Get a specific procurement request by ID."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        obj_id = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID format")
+
+    request = await db["procurement_requests"].find_one({"_id": obj_id})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    return ProcurementRequestResponse(**serialize_request(request))
+
+
+@app.patch("/api/requests/{request_id}", response_model=ProcurementRequestResponse)
+async def update_request(request_id: str, update: ProcurementRequestUpdate):
+    """Update a procurement request."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        obj_id = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID format")
+
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+
+    if "order_lines" in update_data:
+        update_data["order_lines"] = [
+            line.model_dump() if hasattr(line, "model_dump") else line
+            for line in update_data["order_lines"]
+        ]
+
+    update_data["updated_at"] = datetime.utcnow()
+
+    result = await db["procurement_requests"].find_one_and_update(
+        {"_id": obj_id}, {"$set": update_data}, return_document=True
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    return ProcurementRequestResponse(**serialize_request(result))
+
+
+@app.patch(
+    "/api/requests/{request_id}/status", response_model=ProcurementRequestResponse
+)
+async def update_request_status(request_id: str, status_update: StatusUpdate):
+    """Update the status of a procurement request."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        obj_id = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID format")
+
+    # Get current request
+    request = await db["procurement_requests"].find_one({"_id": obj_id})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    # Create status history entry
+    history_entry = {
+        "status": status_update.status.value,
+        "changed_at": datetime.utcnow(),
+        "changed_by": status_update.changed_by,
+        "notes": status_update.notes,
+    }
+
+    # Update the request
+    result = await db["procurement_requests"].find_one_and_update(
+        {"_id": obj_id},
+        {
+            "$set": {
+                "status": status_update.status.value,
+                "updated_at": datetime.utcnow(),
+            },
+            "$push": {"status_history": history_entry},
+        },
+        return_document=True,
+    )
+
+    return ProcurementRequestResponse(**serialize_request(result))
+
+
+@app.delete("/api/requests/{request_id}")
+async def delete_request(request_id: str):
+    """Delete a procurement request."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        obj_id = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID format")
+
+    result = await db["procurement_requests"].delete_one({"_id": obj_id})
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    return {"message": "Request deleted successfully"}
+
+
+@app.post("/api/extract-document", response_model=DocumentExtractionResponse)
+async def extract_document(file: UploadFile = File(...)):
+    """Extract information from an uploaded vendor offer document using AI."""
+    if not openai_client:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI client not initialized. Please set OPENAI_API_KEY environment variable.",
+        )
+
+    # Read file content
+    content = await file.read()
+    text_content = content.decode("utf-8", errors="ignore")
+
+    # Build commodity groups reference for the AI
+    cg_reference = "\n".join(
+        [f"- {g['id']}: {g['category']} > {g['name']}" for g in COMMODITY_GROUPS]
+    )
+
+    extraction_prompt = f"""You are an expert at extracting structured information from vendor offer documents.
+
+Extract the following information from this vendor offer document:
+1. Vendor Name
+2. VAT ID (Umsatzsteuer-Identifikationsnummer)
+3. Department (if mentioned as "Offered to" or similar)
+4. Order Lines (each with: description, unit_price, amount/quantity, unit, total_price)
+5. Total Cost
+
+Also, based on the products/services in the offer, suggest the most appropriate commodity group from this list:
+{cg_reference}
+
+Document Content:
+---
+{text_content}
+---
+
+Respond in JSON format with this exact structure:
+{{
+    "vendor_name": "string or null",
+    "vat_id": "string or null",
+    "department": "string or null",
+    "order_lines": [
+        {{
+            "description": "string",
+            "unit_price": number,
+            "amount": number,
+            "unit": "string",
+            "total_price": number
+        }}
+    ],
+    "total_cost": number or null,
+    "suggested_commodity_group_id": "string (3-digit ID) or null",
+    "suggested_commodity_group_name": "string or null",
+    "extraction_confidence": number between 0 and 1
+}}
+
+Important:
+- Parse currency values as numbers (remove € or $ symbols)
+- If a unit is not specified, use "units" as default
+- Calculate total_price as unit_price * amount if not explicitly stated
+- Be accurate with the extraction, only include what's clearly stated in the document
+"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a precise document extraction assistant. Always respond with valid JSON only.",
+                },
+                {"role": "user", "content": extraction_prompt},
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+
+        result = json.loads(response.choices[0].message.content)
+
+        # Validate and transform order lines
+        order_lines = []
+        for line in result.get("order_lines", []):
+            order_lines.append(
+                OrderLine(
+                    description=line.get("description", ""),
+                    unit_price=float(line.get("unit_price", 0)),
+                    amount=int(line.get("amount", 1)),
+                    unit=line.get("unit", "units"),
+                    total_price=float(line.get("total_price", 0)),
+                )
+            )
+
+        return DocumentExtractionResponse(
+            vendor_name=result.get("vendor_name"),
+            vat_id=result.get("vat_id"),
+            department=result.get("department"),
+            order_lines=order_lines,
+            total_cost=result.get("total_cost"),
+            suggested_commodity_group_id=result.get("suggested_commodity_group_id"),
+            suggested_commodity_group_name=result.get("suggested_commodity_group_name"),
+            extraction_confidence=result.get("extraction_confidence", 0.8),
+        )
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse AI response: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Document extraction failed: {str(e)}"
+        )
+
+
+@app.post("/api/suggest-commodity-group", response_model=CommodityGroupSuggestion)
+async def suggest_commodity_group(
+    title: str = Form(...), order_lines_json: str = Form(...)
+):
+    """Suggest the best commodity group based on request title and order lines using AI."""
+    if not openai_client:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI client not initialized. Please set OPENAI_API_KEY environment variable.",
+        )
+
+    try:
+        order_lines = json.loads(order_lines_json)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid order lines JSON")
+
+    # Build commodity groups reference
+    cg_reference = "\n".join(
+        [f"- {g['id']}: {g['category']} > {g['name']}" for g in COMMODITY_GROUPS]
+    )
+
+    # Build order lines description
+    lines_desc = "\n".join(
+        [f"- {line.get('description', 'Unknown')}" for line in order_lines]
+    )
+
+    suggestion_prompt = f"""You are an expert procurement specialist. Based on the request title and items, suggest the most appropriate commodity group.
+
+Request Title: {title}
+
+Items/Services:
+{lines_desc if lines_desc else "Not specified"}
+
+Available Commodity Groups:
+{cg_reference}
+
+Analyze the request and select the SINGLE most appropriate commodity group. Consider:
+- The nature of the products/services being requested
+- The category that best fits the items
+- Common procurement classifications
+
+Respond in JSON format:
+{{
+    "commodity_group_id": "string (3-digit ID)",
+    "commodity_group_name": "string",
+    "category": "string",
+    "confidence": number between 0 and 1,
+    "reasoning": "brief explanation of why this commodity group was selected"
+}}
+"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a procurement classification expert. Always respond with valid JSON only.",
+                },
+                {"role": "user", "content": suggestion_prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+
+        result = json.loads(response.choices[0].message.content)
+
+        return CommodityGroupSuggestion(
+            commodity_group_id=result.get("commodity_group_id", "009"),
+            commodity_group_name=result.get(
+                "commodity_group_name", "Miscellaneous Services"
+            ),
+            category=result.get("category", "General Services"),
+            confidence=result.get("confidence", 0.5),
+            reasoning=result.get("reasoning", "Default classification"),
+        )
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse AI response: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Commodity group suggestion failed: {str(e)}"
+        )
+
+
+@app.get("/api/requests/{request_id}/history", response_model=List[StatusHistoryEntry])
+async def get_request_history(request_id: str):
+    """Get the status history of a procurement request."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        obj_id = ObjectId(request_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request ID format")
+
+    request = await db["procurement_requests"].find_one(
+        {"_id": obj_id}, {"status_history": 1}
+    )
+
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    return [StatusHistoryEntry(**entry) for entry in request.get("status_history", [])]
+
+
+@app.get("/api/stats")
+async def get_stats():
+    """Get procurement request statistics."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$status",
+                "count": {"$sum": 1},
+                "total_value": {"$sum": "$total_cost"},
+            }
+        }
+    ]
+
+    cursor = db["procurement_requests"].aggregate(pipeline)
+    results = await cursor.to_list(length=None)
+
+    stats = {
+        "by_status": {
+            r["_id"]: {"count": r["count"], "total_value": r["total_value"]}
+            for r in results
+        },
+        "total_requests": sum(r["count"] for r in results),
+        "total_value": sum(r["total_value"] for r in results),
+    }
+
+    return stats
+
+
+# Health check
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint."""
+    db_status = "connected" if db is not None else "disconnected"
+    openai_status = "configured" if openai_client else "not configured"
+
+    return {"status": "healthy", "database": db_status, "openai": openai_status}

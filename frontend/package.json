@@ -1,0 +1,17 @@
+{
+  "name": "procurement-frontend",
+  "private": true,
+  "workspaces": [
+    "my-app"
+  ],
+  "scripts": {
+    "dev": "yarn workspace my-app dev",
+    "build": "yarn workspace my-app build",
+    "start": "yarn workspace my-app start",
+    "lint": "yarn workspace my-app lint"
+  }
+}
+
+
+
+
