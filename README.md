@@ -70,7 +70,8 @@ Frontend runs at **http://localhost:3000**
 │       └── types/            # TypeScript interfaces
 │
 ├── diagrams/                 # Architecture diagrams (PNG images)
-└── sample_vendor_offer.txt   # Test file for AI extraction
+└── backend/tests/
+    └── sample_vendor_offer.txt  # Test file for AI document extraction
 ```
 
 ## Tech Stack
