@@ -1,32 +1,34 @@
-# SANOVIO Procurement System - Architecture Diagrams
+# Architecture Diagrams
 
-This folder contains architecture and design diagrams for the SANOVIO Procurement Request Management System. All diagrams are PNG images.
+PNG diagrams for the SANOVIO Procurement System.
 
-## Diagrams Index
+## System & Stack
 
-### System & Stack
-| # | Image | Description |
-|---|-------|-------------|
-| 1 | ![System Overview](./1-system-overview.png) | High-level system architecture — Frontend, Backend, MongoDB, OpenAI |
-| 2 | ![Tech Stack](./2-tech-stack.png) | Full technology stack for frontend, backend, and infrastructure |
+| Diagram | Description |
+|---------|-------------|
+| [1-system-overview.png](./1-system-overview.png) | High-level architecture: Frontend, Backend, MongoDB, OpenAI |
+| [2-tech-stack.png](./2-tech-stack.png) | Technology stack breakdown |
 
-### Backend
-| # | Image | Description |
-|---|-------|-------------|
-| 3 | ![Backend Architecture](./3-backend-architecture.png) | Backend layered architecture — Routes, Services, Models, Data Layer |
-| 5 | ![Database Schema](./5-database-schema.png) | MongoDB collections ER diagram with relationships |
-| 6 | ![API Endpoints](./6-api-endpoints.png) | Complete REST API endpoint map (24 endpoints) |
+## Backend
 
-### Frontend
-| # | Image | Description |
-|---|-------|-------------|
-| 4 | ![Frontend Components](./4-frontend-components.png) | React component tree and page structure |
-| 10 | ![State Management](./10-state-management.png) | Frontend state management and data flow |
+| Diagram | Description |
+|---------|-------------|
+| [3-backend-architecture.png](./3-backend-architecture.png) | Layered architecture: Routes → Services → Models → Database |
+| [5-database-schema.png](./5-database-schema.png) | MongoDB ER diagram (3 collections + embedded documents) |
+| [6-api-endpoints.png](./6-api-endpoints.png) | All 24 REST API endpoints |
 
-### User Flow Sequences
-| # | Image | Description |
-|---|-------|-------------|
-| 7 | ![Request Creation](./7-request-creation-flow.png) | Create procurement request — form validation and submission |
-| 8 | ![Document Extraction](./8-document-extraction-flow.png) | Upload document — AI-powered text extraction and form auto-fill |
-| 9 | ![Chat Flow](./9-chat-flow.png) | AI assistant — streaming chat with procurement context |
-| 11 | ![Status Update](./11-status-update-flow.png) | Request status update with history tracking |
+## Frontend
+
+| Diagram | Description |
+|---------|-------------|
+| [4-frontend-components.png](./4-frontend-components.png) | React component tree (tabs, forms, modals, hooks) |
+| [10-state-management.png](./10-state-management.png) | State flow: central state, props, hooks, refresh triggers |
+
+## User Flow Sequences
+
+| Diagram | Description |
+|---------|-------------|
+| [7-request-creation-flow.png](./7-request-creation-flow.png) | Form → validate → submit → MongoDB |
+| [8-document-extraction-flow.png](./8-document-extraction-flow.png) | Upload → PDF extract → GPT-4o → auto-fill form |
+| [9-chat-flow.png](./9-chat-flow.png) | Message → load context → GPT-4o stream → render markdown |
+| [11-status-update-flow.png](./11-status-update-flow.png) | Status change → history entry → UI refresh |
