@@ -20,12 +20,11 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create `backend/.env`:
+Copy the example env file and add your key:
 
-```env
-OPENAI_API_KEY=sk-your-key
-MONGODB_URI=mongodb://localhost:27017   # optional, this is the default
-MONGODB_DB_NAME=procurement_db          # optional, this is the default
+```bash
+cp .env.example .env
+# Edit .env and set your real OPENAI_API_KEY
 ```
 
 Run:
