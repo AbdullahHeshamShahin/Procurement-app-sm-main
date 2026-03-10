@@ -75,13 +75,15 @@ Frontend runs at **http://localhost:3000**
 
 ## Tech Stack
 
-| Layer | Tech |
-|-------|------|
-| Frontend | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4 |
-| Backend | FastAPI 0.115, Pydantic 2.9, Motor 3.6 (async MongoDB) |
-| Database | MongoDB |
-| AI | OpenAI GPT-4o |
+| Layer    | Tech                                                   |
+| -------- | ------------------------------------------------------ |
+| Frontend | Next.js 16, React 19, TypeScript 5, Tailwind CSS 4     |
+| Backend  | FastAPI 0.115, Pydantic 2.9, Motor 3.6 (async MongoDB) |
+| Database | MongoDB                                                |
+| AI       | OpenAI GPT-4o                                          |
 
 ## Architecture Diagrams
 
 See [`diagrams/`](./diagrams/) for full PNG architecture diagrams covering system overview, backend layers, frontend components, database schema, API endpoints, and user flow sequences.
+
+This is link for PoC video in google drive :https://drive.google.com/file/d/1Own06UZ2vKNQyS3JzVffpghTbXebe_UY/view?usp=drive_link
